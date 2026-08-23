@@ -1,5 +1,5 @@
 {
-    "name": "voyager/log",
+    "name": "venusian-voyager/log",
     "description": "The Voyager Log package.",
     "license": "MIT",
     "authors": [
@@ -13,8 +13,8 @@
     ],
     "require": {
         "php": "^8.4|^8.5",
-        "voyager/contracts": "^0.8.0",
-        "voyager/nuts-and-bolts": "^0.8.0",
+        "venusian-voyager/contracts": "^0.8.0",
+        "venusian-voyager/nuts-and-bolts": "^0.8.0",
         "monolog/monolog": "^3.0",
         "psr/log": "^1.0|^2.0|^3.0"
     },
