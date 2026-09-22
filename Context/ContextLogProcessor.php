@@ -2,24 +2,28 @@
 
 namespace Voyager\Log\Context;
 
-use Voyager\Vessel\Vessel;
-use Voyager\Contracts\Log\ContextLogProcessor as ContextLogProcessorContract;
-use Voyager\Log\Context\Repository as ContextRepository;
 use Monolog\LogRecord;
+use Voyager\Vessel\ControlPanel;
+use Psr\Container\NotFoundExceptionInterface;
+use Psr\Container\ContainerExceptionInterface;
+use Voyager\Log\Context\Repository as ContextRepository;
+use Voyager\Contracts\Log\ContextLogProcessor as ContextLogProcessorContract;
 
 class ContextLogProcessor implements ContextLogProcessorContract
 {
     /**
      * Add contextual data to the log's "extra" parameter.
      *
-     * @param  \Monolog\LogRecord  $record
-     * @return \Monolog\LogRecord
+     * @param LogRecord $record
+     * @return LogRecord
+     * @throws ContainerExceptionInterface
+     * @throws NotFoundExceptionInterface
      */
     public function __invoke(LogRecord $record): LogRecord
     {
-        $app = Vessel::getInstance();
+        $app = ControlPanel::getInstance();
 
-        if (! $app->bound(ContextRepository::class)) {
+        if (! $app->isBound(ContextRepository::class)) {
             return $record;
         }
 

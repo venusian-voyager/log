@@ -1,6 +1,6 @@
 <?php
 
-namespace Voyager\Log\Context\Events;
+namespace Voyager\Log\Context\Signals;
 
 use Voyager\Log\Context\Repository;
 
