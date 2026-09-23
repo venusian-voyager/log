@@ -13,10 +13,10 @@
     ],
     "require": {
         "php": "^8.4|^8.5",
-        "venusian-voyager/contracts": "^0.8.0",
-        "venusian-voyager/nuts-and-bolts": "^0.8.0",
         "monolog/monolog": "^3.0",
-        "psr/log": "^1.0|^2.0|^3.0"
+        "psr/log": "^1.0|^2.0|^3.0",
+        "venusian-voyager/contracts": "^0.9.0",
+        "venusian-voyager/nuts-and-bolts": "^0.9.0"
     },
     "autoload": {
         "psr-4": {
@@ -25,13 +25,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "0.8.x-dev"
-        },
-        "venusian": {
-            "upstream": "laravel/framework",
-            "upstream-ref": "v12.67.0",
-            "upstream-path": "src/Illuminate/Log",
-            "ported-at": "2026-08-19"
+            "dev-main": "0.9.x-dev"
         }
     },
     "config": {

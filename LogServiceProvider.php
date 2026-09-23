@@ -10,9 +10,10 @@ class LogServiceProvider extends ServiceProvider
      * Register the service provider.
      *
      * @return void
+     * @throws \ReflectionException
      */
     public function register(): void
     {
-        $this->app->singleton('log', fn ($app) => new LogManager($app));
+        $this->app->registerSingleton('log', fn ($app) => new LogManager($app));
     }
 }

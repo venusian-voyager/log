@@ -3,10 +3,10 @@
 namespace Voyager\Log;
 
 use Closure;
-use Voyager\Contracts\Events\Dispatcher;
 use Voyager\Contracts\NutsAndBolts\Arrayable;
 use Voyager\Contracts\NutsAndBolts\Jsonable;
-use Voyager\Log\Events\MessageLogged;
+use Voyager\Contracts\Signals\SignalDispatcher;
+use Voyager\Log\Signals\MessageLogged;
 use Voyager\NutsAndBolts\Concerns\Conditionable;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -18,16 +18,16 @@ class Logger implements LoggerInterface
     /**
      * The underlying logger implementation.
      *
-     * @var \Psr\Log\LoggerInterface
+     * @var LoggerInterface
      */
     protected LoggerInterface $logger;
 
     /**
      * The event dispatcher instance.
      *
-     * @var \Voyager\Contracts\Events\Dispatcher|null
+     * @var SignalDispatcher|null
      */
-    protected ?Dispatcher $dispatcher;
+    protected ?SignalDispatcher $dispatcher;
 
     /**
      * Any context to be added to logs.
@@ -39,10 +39,10 @@ class Logger implements LoggerInterface
     /**
      * Create a new log writer instance.
      *
-     * @param  \Psr\Log\LoggerInterface  $logger
-     * @param  \Voyager\Contracts\Events\Dispatcher|null  $dispatcher
+     * @param LoggerInterface $logger
+     * @param SignalDispatcher|null  $dispatcher
      */
-    public function __construct(LoggerInterface $logger, ?Dispatcher $dispatcher = null)
+    public function __construct(LoggerInterface $logger, ?SignalDispatcher $dispatcher = null)
     {
         $this->logger = $logger;
         $this->dispatcher = $dispatcher;
@@ -160,12 +160,12 @@ class Logger implements LoggerInterface
     /**
      * Dynamically pass log calls into the writer.
      *
-     * @param  string  $level
+     * @param string $level
      * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
      * @param  array  $context
      * @return void
      */
-    public function write($level, $message, array $context = []): void
+    public function write(string $level, mixed $message, array $context = []): void
     {
         $this->writeLog($level, $message, $context);
     }
@@ -280,7 +280,7 @@ class Logger implements LoggerInterface
     /**
      * Get the underlying logger implementation.
      *
-     * @return \Psr\Log\LoggerInterface
+     * @return LoggerInterface
      */
     public function getLogger(): LoggerInterface
     {
@@ -290,9 +290,9 @@ class Logger implements LoggerInterface
     /**
      * Get the event dispatcher instance.
      *
-     * @return \Voyager\Contracts\Events\Dispatcher|null
+     * @return \Voyager\Contracts\Signals\SignalDispatcher|null
      */
-    public function getEventDispatcher(): ?Dispatcher
+    public function getEventDispatcher(): ?SignalDispatcher
     {
         return $this->dispatcher;
     }
@@ -300,10 +300,10 @@ class Logger implements LoggerInterface
     /**
      * Set the event dispatcher instance.
      *
-     * @param  \Voyager\Contracts\Events\Dispatcher  $dispatcher
+     * @param  \Voyager\Contracts\Signals\SignalDispatcher  $dispatcher
      * @return void
      */
-    public function setEventDispatcher(Dispatcher $dispatcher): void
+    public function setEventDispatcher(SignalDispatcher $dispatcher): void
     {
         $this->dispatcher = $dispatcher;
     }

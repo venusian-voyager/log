@@ -4,10 +4,10 @@ namespace Voyager\Log\Context;
 
 use __PHP_Incomplete_Class;
 use Closure;
-use Voyager\Contracts\Events\Dispatcher;
+use Voyager\Contracts\Signals\SignalDispatcher;
 use Voyager\Database\Instrument\ModelNotFoundException;
-use Voyager\Log\Context\Events\ContextDehydrating as Dehydrating;
-use Voyager\Log\Context\Events\ContextHydrated as Hydrated;
+use Voyager\Log\Context\Signals\ContextDehydrating as Dehydrating;
+use Voyager\Log\Context\Signals\ContextHydrated as Hydrated;
 use Voyager\Queue\Concerns\SerializesModels;
 use Voyager\NutsAndBolts\Collection;
 use Voyager\NutsAndBolts\Concerns\Conditionable;
@@ -22,9 +22,9 @@ class Repository
     /**
      * The event dispatcher instance.
      *
-     * @var \Voyager\Contracts\Events\Dispatcher
+     * @var \Voyager\Contracts\Signals\SignalDispatcher
      */
-    protected Dispatcher $events;
+    protected SignalDispatcher $events;
 
     /**
      * The contextual data.
@@ -50,7 +50,7 @@ class Repository
     /**
      * Create a new Context instance.
      */
-    public function __construct(Dispatcher $events)
+    public function __construct(SignalDispatcher $events)
     {
         $this->events = $events;
     }
