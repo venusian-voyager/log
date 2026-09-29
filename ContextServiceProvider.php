@@ -42,6 +42,11 @@ class ContextServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Without the Queue component there are no jobs to carry context.
+        if (! class_exists(Queue::class)) {
+            return;
+        }
+
         // A pushed job carries the context it was dispatched in, and the worker takes it back up.
         // Payload callbacks are static on Queue, so the hook goes on once per process and reads
         // whichever app is current when a job is pushed.
