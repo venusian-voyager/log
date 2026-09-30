@@ -4,12 +4,9 @@ namespace Voyager\Log;
 
 use Closure;
 use InvalidArgumentException;
-use Monolog\Handler\BufferHandler;
 use Monolog\Handler\ErrorLogHandler;
 use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\SyslogHandler;
-use Monolog\Level;
-use Monolog\LogRecord;
 use Monolog\Handler\WhatFailureGroupHandler;
 use Monolog\Processor\ProcessorInterface;
 use Monolog\Processor\PsrLogMessageProcessor;
@@ -23,7 +20,7 @@ use Monolog\Handler\HandlerInterface;
 use Psr\Log\LoggerInterface;
 use Monolog\Logger as Monolog;
 use Monolog\Handler\StreamHandler;
-use Voyager\Contracts\IOPools\Loop;
+use Voyager\Contracts\IOPools\Promise;
 use Voyager\Contracts\Log\ContextLogProcessor;
 use Voyager\NutsAndBolts\Collection;
 use Voyager\NutsAndBolts\DataObjects\Str;
@@ -69,6 +66,13 @@ class LogManager implements LoggerInterface
     protected string $date_format = 'Y-m-d H:i:s';
 
     /**
+     * Carries every channel's *Async() calls to a worker pool.
+     *
+     * @var AsyncWrites
+     */
+    protected AsyncWrites $writes;
+
+    /**
      * Create a new Log manager instance.
      *
      * @param FrameworkCore $app
@@ -76,6 +80,7 @@ class LogManager implements LoggerInterface
     public function __construct(FrameworkCore $app)
     {
         $this->app = $app;
+        $this->writes = new AsyncWrites($app);
     }
 
     public function emergency(Stringable|string $message, array $context = []): void
@@ -123,13 +128,58 @@ class LogManager implements LoggerInterface
         $this->driver()->log($level, $message, $context);
     }
 
+    public function emergencyAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->emergencyAsync($message, $context);
+    }
+
+    public function alertAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->alertAsync($message, $context);
+    }
+
+    public function criticalAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->criticalAsync($message, $context);
+    }
+
+    public function errorAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->errorAsync($message, $context);
+    }
+
+    public function warningAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->warningAsync($message, $context);
+    }
+
+    public function noticeAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->noticeAsync($message, $context);
+    }
+
+    public function infoAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->infoAsync($message, $context);
+    }
+
+    public function debugAsync(Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->debugAsync($message, $context);
+    }
+
+    public function logAsync(string $level, Stringable|string $message, array $context = []): Promise
+    {
+        return $this->driver()->logAsync($level, $message, $context);
+    }
+
     /**
      * Build an on-demand log channel.
      *
      * @param  array  $config
-     * @return LoggerInterface
+     * @return Logger
      */
-    public function build(array $config): LoggerInterface
+    public function build(array $config): Logger
     {
         unset($this->channels['ondemand']);
 
@@ -141,13 +191,25 @@ class LogManager implements LoggerInterface
      *
      * @param  array  $channels
      * @param  string|null  $channel
-     * @return LoggerInterface
+     * @return Logger
      */
-    public function stack(array $channels, $channel = null): LoggerInterface
+    public function stack(array $channels, ?string $channel = null): Logger
     {
+        $config = ['driver' => 'stack', 'channels' => $channels, 'channel' => $channel];
+
+        // A worker resolves the stack under this name. Members handed over as loggers can't cross,
+        // so their async calls reject with the pool's "can't be sent" error.
+        $name = 'stack['.implode(',', array_map(
+            fn (mixed $member): string => is_string($member) ? $member : get_debug_type($member),
+            $channels,
+        )).']';
+
         return new Logger(
-            $this->createStackDriver(compact('channels', 'channel')),
-            $this->app['signals']
+            $this->createStackDriver($config),
+            $this->app['signals'],
+            $this->writes,
+            $name,
+            $this->configsFor($name, $config),
         )->withContext($this->sharedContext);
     }
 
@@ -155,9 +217,9 @@ class LogManager implements LoggerInterface
      * Get a log channel instance.
      *
      * @param string|null $channel
-     * @return LoggerInterface
+     * @return Logger
      */
-    public function channel(?string $channel = null): LoggerInterface
+    public function channel(?string $channel = null): Logger
     {
         return $this->driver($channel);
     }
@@ -166,9 +228,9 @@ class LogManager implements LoggerInterface
      * Get a log driver instance.
      *
      * @param string|null $driver
-     * @return LoggerInterface
+     * @return Logger
      */
-    public function driver(?string $driver = null): LoggerInterface
+    public function driver(?string $driver = null): Logger
     {
         return $this->get($this->parseDriver($driver));
     }
@@ -226,35 +288,6 @@ class LogManager implements LoggerInterface
         }
 
         return new Monolog($this->parseChannel($config), $handlers, $processors);
-    }
-
-    /**
-     * Buffer another channel and write it once per loop turn.
-     */
-    protected function createDeferredDriver(array $config): LoggerInterface
-    {
-        $inner = $this->channel($config['channel']);
-        $monolog = $inner instanceof Logger ? $inner->getLogger() : $inner;
-
-        $buffers = array_map(
-            fn ($handler) => new BufferHandler($handler, $config['limit'] ?? 0, Level::Debug, true, false),
-            $monolog->getHandlers(),
-        );
-
-        $flush = new DeferredFlush($this->app->make(Loop::class), $buffers);
-
-        $arming = new class($flush) implements HandlerInterface {
-            public function __construct(private readonly DeferredFlush $flush) {}
-            public function isHandling(LogRecord $record): bool { return true; }
-            public function handle(LogRecord $record): bool { $this->flush->arm(); return false; }   // false: let the buffers see it too
-            public function handleBatch(array $records): void { $this->flush->arm(); }
-            public function close(): void {}
-        };
-
-        return new Logger(
-            new Monolog($this->parseChannel($config), [$arming, ...$buffers], $monolog->getProcessors()),
-            $this->app['signals'],
-        );
     }
 
     /**
@@ -387,19 +420,25 @@ class LogManager implements LoggerInterface
      *
      * @param  string|null  $name
      * @param  array|null  $config
-     * @return LoggerInterface
+     * @return Logger
      */
-    protected function get(?string $name, ?array $config = null): LoggerInterface
+    protected function get(?string $name, ?array $config = null): Logger
     {
         try {
             if (is_null($name)) {
                 throw new InvalidArgumentException('Log [] is not defined.');
             }
 
-            return $this->channels[$name] ?? with($this->resolve($name, $config), function ($logger) use ($name) {
+            return $this->channels[$name] ?? with($this->resolve($name, $config), function ($logger) use ($name, $config) {
                 $loggerWithContext = $this->tap(
                     $name,
-                    new Logger($logger, $this->app['signals'])
+                    new Logger(
+                        $logger,
+                        $this->app['signals'],
+                        $this->writes,
+                        $name,
+                        $this->configsFor($name, $config ?? $this->configurationFor($name)),
+                    )
                 )->withContext($this->sharedContext);
 
                 if (method_exists($loggerWithContext->getLogger(), 'pushProcessor')) {
@@ -418,6 +457,60 @@ class LogManager implements LoggerInterface
 
 
     }
+    /**
+     * The worker side of an async call: the channel built from the caller's config, so the worker
+     * writes where the caller would have. Config that differs from what this process holds
+     * replaces it, and the channel is rebuilt; unchanged config reuses the channel already open.
+     *
+     * @param string $name
+     * @param array<string, array<string, mixed>> $configs
+     * @return LoggerInterface the channel's own logger, Monolog for every built-in driver
+     */
+    public function replay(string $name, array $configs): LoggerInterface
+    {
+        $changed = false;
+
+        foreach ($configs as $channel => $config) {
+            if ($this->configurationFor($channel) !== $config) {
+                $this->app['config']["logging.channels.{$channel}"] = $config;
+                $this->forgetChannel($channel);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            $this->forgetChannel($name);
+        }
+
+        return $this->channel($name)->getLogger();
+    }
+
+    /**
+     * The config entries a worker needs to build a channel: its own, and each stack member's.
+     *
+     * @param string $name
+     * @param array<string, mixed> $config
+     * @return array<string, array<string, mixed>>
+     */
+    protected function configsFor(string $name, array $config): array
+    {
+        $configs = [$name => $config];
+
+        if (($config['driver'] ?? null) !== 'stack') {
+            return $configs;
+        }
+
+        $members = is_string($config['channels']) ? explode(',', $config['channels']) : $config['channels'];
+
+        foreach ($members as $member) {
+            if (is_string($member) && ! is_null($member_config = $this->configurationFor($member))) {
+                $configs += $this->configsFor($member, $member_config);
+            }
+        }
+
+        return $configs;
+    }
+
     /**
      * Apply the configured taps for the logger.
      *
@@ -461,20 +554,22 @@ class LogManager implements LoggerInterface
     /**
      * Create an emergency log handler to avoid white screens of death.
      *
-     * @return LoggerInterface
+     * @return Logger
      */
-    protected function createEmergencyLogger(): LoggerInterface
+    protected function createEmergencyLogger(): Logger
     {
         $config = $this->configurationFor('emergency');
+        $path = $config['path'] ?? $this->app->storagePath().'/logs/venusian.log';
 
-        $handler = new StreamHandler(
-            $config['path'] ?? $this->app->storagePath().'/logs/venusian.log',
-            $this->level(['level' => 'debug'])
-        );
+        $handler = new StreamHandler($path, $this->level(['level' => 'debug']));
 
+        // A worker writes this logger's async calls through a single channel on the same file.
         return new Logger(
             new Monolog('venusian', $this->prepareHandlers([$handler])),
-            $this->app['signals']
+            $this->app['signals'],
+            $this->writes,
+            'emergency',
+            ['emergency' => ['driver' => 'single', 'path' => $path, 'level' => 'debug', 'name' => 'venusian']],
         );
     }
 

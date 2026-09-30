@@ -4,15 +4,17 @@ namespace Voyager\Log;
 
 use Voyager\Queue\Queue;
 use Voyager\Log\Context\Repository;
+use Voyager\Vessel\ControlPanel;
 use Voyager\Queue\Signals\JobProcessing;
 use Voyager\NutsAndBolts\DataObjects\Env;
 use Voyager\NutsAndBolts\ServiceProvider;
 use Voyager\Log\Context\ContextLogProcessor;
-use Voyager\NutsAndBolts\MagicAliases\Context;
 use Voyager\Contracts\Log\ContextLogProcessor as ContextLogProcessorContract;
 
 class ContextServiceProvider extends ServiceProvider
 {
+    private static bool $payload_hooked = false;
+
     /**
      * Register the service provider.
      *
@@ -40,26 +42,29 @@ class ContextServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Queue arrives in a later wave; context propagation across jobs wires
-        // itself up once it does.
-        /* @todo - bring these back up eventually
+        // Without the Queue component there are no jobs to carry context.
         if (! class_exists(Queue::class)) {
             return;
         }
 
-        Queue::createPayloadUsing(function ($connection, $queue, $payload) {
+        // A pushed job carries the context it was dispatched in, and the worker takes it back up.
+        // Payload callbacks are static on Queue, so the hook goes on once per process and reads
+        // whichever app is current when a job is pushed.
+        if (! self::$payload_hooked) {
+            self::$payload_hooked = true;
 
-            $context = Context::dehydrate();
+            Queue::createPayloadUsing(function ($connection, $queue, $payload) {
+                $context = ControlPanel::getInstance()->make(Repository::class)->dehydrate();
 
-            return $context === null ? $payload : [
-                ...$payload,
-                'voyager:log:context' => $context,
-            ];
+                return $context === null ? $payload : [
+                    ...$payload,
+                    'voyager:log:context' => $context,
+                ];
+            });
+        }
+
+        $this->app['signals']->listen(function (JobProcessing $event) {
+            $this->app->make(Repository::class)->hydrate($event->job->payload()['voyager:log:context'] ?? null);
         });
-
-        $this->app['events']->listen(function (JobProcessing $event) {
-
-            Context::hydrate($event->job->payload()['voyager:log:context'] ?? null);
-        });*/
     }
 }

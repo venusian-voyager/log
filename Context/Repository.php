@@ -8,7 +8,6 @@ use Voyager\Contracts\Signals\SignalDispatcher;
 use Voyager\Database\Instrument\ModelNotFoundException;
 use Voyager\Log\Context\Signals\ContextDehydrating as Dehydrating;
 use Voyager\Log\Context\Signals\ContextHydrated as Hydrated;
-use Voyager\Queue\Concerns\SerializesModels;
 use Voyager\NutsAndBolts\Collection;
 use Voyager\NutsAndBolts\Concerns\Conditionable;
 use Voyager\NutsAndBolts\Concerns\Macroable;
@@ -17,7 +16,7 @@ use Throwable;
 
 class Repository
 {
-    use Conditionable, Macroable, SerializesModels;
+    use Conditionable, Macroable;
 
     /**
      * The event dispatcher instance.
@@ -644,7 +643,7 @@ class Repository
 
         $instance->events->dispatch(new Dehydrating($instance));
 
-        $serialize = fn ($value) => serialize($instance->getSerializedPropertyValue($value, withRelations: false));
+        $serialize = fn (mixed $value): string => serialize($value);
 
         return $instance->isEmpty() ? null : [
             'data' => array_map($serialize, $instance->all()),
@@ -666,7 +665,7 @@ class Repository
     {
         $unserialize = function ($value, $key, $hidden) {
             try {
-                return tap($this->getRestoredPropertyValue(unserialize($value)), function ($value) {
+                return tap(unserialize($value), function ($value) {
                     if ($value instanceof __PHP_Incomplete_Class) {
                         throw new RuntimeException('Value is incomplete class: '.json_encode($value));
                     }

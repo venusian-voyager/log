@@ -3,13 +3,15 @@
 namespace Voyager\Log;
 
 use Closure;
-use Voyager\Contracts\NutsAndBolts\Arrayable;
-use Voyager\Contracts\NutsAndBolts\Jsonable;
-use Voyager\Contracts\Signals\SignalDispatcher;
-use Voyager\Log\Signals\MessageLogged;
-use Voyager\NutsAndBolts\Concerns\Conditionable;
-use Psr\Log\LoggerInterface;
+use Stringable;
 use RuntimeException;
+use Psr\Log\LoggerInterface;
+use Voyager\Log\Signals\MessageLogged;
+use Voyager\Contracts\IOPools\Promise;
+use Voyager\Contracts\NutsAndBolts\Jsonable;
+use Voyager\Contracts\NutsAndBolts\Arrayable;
+use Voyager\Contracts\Signals\SignalDispatcher;
+use Voyager\NutsAndBolts\Concerns\Conditionable;
 
 class Logger implements LoggerInterface
 {
@@ -40,145 +42,129 @@ class Logger implements LoggerInterface
      * Create a new log writer instance.
      *
      * @param LoggerInterface $logger
-     * @param SignalDispatcher|null  $dispatcher
+     * @param SignalDispatcher|null $dispatcher
+     * @param AsyncWrites|null $writes carries the *Async() calls to a worker pool
+     * @param string $channel the name a worker resolves this channel by
+     * @param array<string, array<string, mixed>> $configs the logging.channels entries a worker builds it from
      */
-    public function __construct(LoggerInterface $logger, ?SignalDispatcher $dispatcher = null)
-    {
+    public function __construct(
+        LoggerInterface $logger,
+        ?SignalDispatcher $dispatcher = null,
+        protected readonly ?AsyncWrites $writes = null,
+        protected readonly string $channel = '',
+        protected readonly array $configs = [],
+    ) {
         $this->logger = $logger;
         $this->dispatcher = $dispatcher;
     }
 
-    /**
-     * Log an emergency message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function emergency($message, array $context = []): void
+    public function emergency(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('emergency', $message, $context);
     }
 
-    /**
-     * Log an alert message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function alert($message, array $context = []): void
+    public function alert(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('alert', $message, $context);
     }
 
-    /**
-     * Log a critical message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function critical($message, array $context = []): void
+    public function critical(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('critical', $message, $context);
     }
 
-    /**
-     * Log an error message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function error($message, array $context = []): void
+    public function error(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('error', $message, $context);
     }
 
-    /**
-     * Log a warning message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function warning($message, array $context = []): void
+    public function warning(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('warning', $message, $context);
     }
 
-    /**
-     * Log a notice to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function notice($message, array $context = []): void
+    public function notice(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('notice', $message, $context);
     }
 
-    /**
-     * Log an informational message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function info($message, array $context = []): void
+    public function info(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('info', $message, $context);
     }
 
-    /**
-     * Log a debug message to the logs.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
-     */
-    public function debug($message, array $context = []): void
+    public function debug(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
-        $this->writeLog(__FUNCTION__, $message, $context);
+        $this->writeLog('debug', $message, $context);
     }
 
     /**
      * Log a message to the logs.
      *
-     * @param  string  $level
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
+     * @param mixed $level a level name: PSR-3 leaves the parameter untyped
      */
-    public function log($level, $message, array $context = []): void
+    public function log($level, Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
         $this->writeLog($level, $message, $context);
     }
 
     /**
      * Dynamically pass log calls into the writer.
-     *
-     * @param string $level
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
      */
-    public function write(string $level, mixed $message, array $context = []): void
+    public function write(string $level, Arrayable|Jsonable|Stringable|array|string $message, array $context = []): void
     {
         $this->writeLog($level, $message, $context);
     }
 
+    public function emergencyAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('emergency', $message, $context);
+    }
+
+    public function alertAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('alert', $message, $context);
+    }
+
+    public function criticalAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('critical', $message, $context);
+    }
+
+    public function errorAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('error', $message, $context);
+    }
+
+    public function warningAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('warning', $message, $context);
+    }
+
+    public function noticeAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('notice', $message, $context);
+    }
+
+    public function infoAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('info', $message, $context);
+    }
+
+    public function debugAsync(Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync('debug', $message, $context);
+    }
+
+    public function logAsync(string $level, Arrayable|Jsonable|Stringable|array|string $message, array $context = []): Promise
+    {
+        return $this->writeLogAsync($level, $message, $context);
+    }
+
     /**
      * Write a message to the log.
-     *
-     * @param  string  $level
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @param  array  $context
-     * @return void
      */
-    protected function writeLog(string $level, mixed $message, array $context): void
+    protected function writeLog(string $level, Arrayable|Jsonable|Stringable|array|string $message, array $context): void
     {
         if (method_exists($this->logger, 'isHandling') && ! $this->logger->isHandling($level)) {
             return;
@@ -190,6 +176,31 @@ class Logger implements LoggerInterface
         );
 
         $this->fireLogEvent($level, $message, $context);
+    }
+
+    /**
+     * Hand a message to a pool worker, which writes it through this channel exactly as writeLog() would.
+     * Everything up to the write happens here: the level check, the message format, the context merge,
+     * and MessageLogged, so this process's listeners hear async lines too.
+     */
+    protected function writeLogAsync(string $level, Arrayable|Jsonable|Stringable|array|string $message, array $context): Promise
+    {
+        if (is_null($this->writes)) {
+            throw new RuntimeException('This logger has no pool to write through: async calls need a logger built by the LogManager.');
+        }
+
+        if (method_exists($this->logger, 'isHandling') && ! $this->logger->isHandling($level)) {
+            return $this->writes->nothing();
+        }
+
+        $message = $this->formatMessage($message);
+        $context = array_merge($this->context, $context);
+
+        $promise = $this->writes->submit($this->channel, $this->configs, $level, $message, $context);
+
+        $this->fireLogEvent($level, $message, $context);
+
+        return $promise;
     }
 
     /**
@@ -225,10 +236,7 @@ class Logger implements LoggerInterface
     /**
      * Register a new callback handler for when a log event is triggered.
      *
-     * @param  \Closure  $callback
-     * @return void
-     *
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function listen(Closure $callback): void
     {
@@ -241,13 +249,8 @@ class Logger implements LoggerInterface
 
     /**
      * Fires a log event.
-     *
-     * @param  string  $level
-     * @param  string  $message
-     * @param  array  $context
-     * @return void
      */
-    protected function fireLogEvent($level, $message, array $context = []): void
+    protected function fireLogEvent(string $level, string $message, array $context = []): void
     {
         // Avoid dispatching the event multiple times if our logger instance is the LogManager...
         if ($this->logger instanceof LogManager &&
@@ -263,11 +266,8 @@ class Logger implements LoggerInterface
 
     /**
      * Format the parameters for the logger.
-     *
-     * @param  \Voyager\Contracts\NutsAndBolts\Arrayable|\Voyager\Contracts\NutsAndBolts\Jsonable|\Voyager\NutsAndBolts\DataObjects\Stringable|array|string  $message
-     * @return string
      */
-    protected function formatMessage(mixed $message): string
+    protected function formatMessage(Arrayable|Jsonable|Stringable|array|string $message): string
     {
         return match (true) {
             is_array($message) => var_export($message, true),
@@ -290,7 +290,7 @@ class Logger implements LoggerInterface
     /**
      * Get the event dispatcher instance.
      *
-     * @return \Voyager\Contracts\Signals\SignalDispatcher|null
+     * @return SignalDispatcher|null
      */
     public function getEventDispatcher(): ?SignalDispatcher
     {
@@ -300,7 +300,7 @@ class Logger implements LoggerInterface
     /**
      * Set the event dispatcher instance.
      *
-     * @param  \Voyager\Contracts\Signals\SignalDispatcher  $dispatcher
+     * @param SignalDispatcher $dispatcher
      * @return void
      */
     public function setEventDispatcher(SignalDispatcher $dispatcher): void
