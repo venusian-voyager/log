@@ -174,9 +174,8 @@ final class AsyncWrites
 
     private function pool(): WorkerPool
     {
-        return $this->pool ??= match (true) {
-            $this->app->isBound('thread-workers') => $this->app->get('thread-workers'),
-            $this->app->isBound('process-workers') => $this->app->get('process-workers'),
+        return $this->pool ??= match ($binding = \Voyager\IOPools\WorkerPools\AutoPool::binding($this->app)) {
+            'thread-workers', 'process-workers' => $this->app->get($binding),
             default => throw new InvalidArgumentException(
                 'Async logging writes through a worker pool, and none is on: enable io-pools.pool_workers.threads or io-pools.pool_workers.process.'
             ),
