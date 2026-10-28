@@ -267,27 +267,43 @@ class LogManager implements LoggerInterface
             $config['channels'] = explode(',', $config['channels']);
         }
 
-        $handlers = new Collection($config['channels'])
-            ->flatMap(function ($channel) {
-                return $channel instanceof LoggerInterface
-                    ? $channel->getHandlers()
-                    : $this->channel($channel)->getHandlers();
-            })
-            ->all();
+        $loggers = new Collection($config['channels'])
+            ->map(fn ($channel) => $this->stackMember($channel));
 
-        $processors = new Collection($config['channels'])
-            ->flatMap(function ($channel) {
-                return $channel instanceof LoggerInterface
-                    ? $channel->getProcessors()
-                    : $this->channel($channel)->getProcessors();
-            })
-            ->all();
+        $handlers = $loggers->flatMap(fn (Monolog $logger) => $logger->getHandlers())->all();
+
+        $processors = $loggers->flatMap(fn (Monolog $logger) => $logger->getProcessors())->all();
 
         if ($config['ignore_exceptions'] ?? false) {
             $handlers = [new WhatFailureGroupHandler($handlers)];
         }
 
         return new Monolog($this->parseChannel($config), $handlers, $processors);
+    }
+
+    /**
+     * Resolve a stack member to the Monolog logger that holds its handlers and processors.
+     *
+     * @param  \Psr\Log\LoggerInterface|string  $channel
+     * @return \Monolog\Logger
+     *
+     * @throws InvalidArgumentException
+     */
+    protected function stackMember(LoggerInterface|string $channel): Monolog
+    {
+        $logger = $channel instanceof LoggerInterface ? $channel : $this->channel($channel);
+
+        if ($logger instanceof Logger) {
+            $logger = $logger->getLogger();
+        }
+
+        if (! $logger instanceof Monolog) {
+            $name = is_string($channel) ? $channel : $logger::class;
+
+            throw new InvalidArgumentException("Log [{$name}] cannot join a stack: stack channels must be Monolog loggers.");
+        }
+
+        return $logger;
     }
 
     /**
